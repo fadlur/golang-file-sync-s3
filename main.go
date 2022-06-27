@@ -4,6 +4,8 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"strconv"
+	"strings"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
@@ -11,8 +13,7 @@ import (
 )
 
 func main()  {
-	var listDirectory [4]string
-	var listBucket []string
+	var listConfig [4]string
 
 	welcomeText := `
 	Sync file to AWS S3
@@ -41,13 +42,15 @@ func main()  {
 		exitErrorf("Unable to list buckets, %v", err)
 	}
 
-	fmt.Println("Buckets: ")
-	for index, b := range result.Buckets {
-		fmt.Printf("* %s created on %s\n", aws.StringValue(b.Name), aws.TimeValue(b.CreationDate))
-		listBucket[index] = aws.StringValue(b.Name)
+	listBucketS3 := make([]string, len(result.Buckets))
+	indexBucket := 0
+	for _, b := range result.Buckets {
+		// fmt.Printf("* %s created on %s\n", aws.StringValue(b.Name), aws.TimeValue(b.CreationDate))
+		listBucketS3[indexBucket] = aws.StringValue(b.Name)
+		indexBucket++
 	}
 	// get main directory
-	for i := 0; i < len(listDirectory) - 1; i++ {
+	for i := 0; i < len(listConfig) - 1; i++ {
 		switch i {
 		case 0:
 			fmt.Println("Please enter main directory: ")
@@ -63,7 +66,34 @@ func main()  {
 			fmt.Fprintln(os.Stderr, err)
 			return
 		}
-		listDirectory[i] = directory
+		listConfig[i] = strings.TrimRight(directory, "\r\n")
+	}
+	// choose bucket name
+	fmt.Println("Please enter number of bucket name: ")
+	for index, name := range listBucketS3 {
+		fmt.Printf("%d. %s \n", index, name)
+	}
+	reader := bufio.NewReader(os.Stdin)
+	numberString, err := reader.ReadString('\n')
+
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return
+	}
+
+	number, err := strconv.Atoi(strings.TrimRight(numberString, "\r\n"))
+	if err != nil {
+		fmt.Println(err)
+		os.Exit(2)
+	}
+	if (number - 1) > len(listBucketS3) {
+		fmt.Println("Your choice out of range")
+		os.Exit(1)
+	}
+	listConfig[3] = listBucketS3[number]
+
+	for _, a := range listConfig {
+		fmt.Println(a)
 	}
 }
 
