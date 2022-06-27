@@ -26,7 +26,9 @@ func main()  {
 	`
 	fmt.Println(welcomeText)
 	fmt.Println("Loading bucket s3")
-	sess, err := session.NewSession(&aws.Config{})
+	sess, err := session.NewSession(&aws.Config{
+		Region: aws.String("ap-southeast-1"),
+	})
 
 	if err != nil {
 		exitErrorf("Unable to find config, %v", err)
