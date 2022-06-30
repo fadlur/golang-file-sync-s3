@@ -26,9 +26,20 @@ func main()  {
 	6. Copy paste error directory (file which is failed to upload to s3)
 	`
 	fmt.Println(welcomeText)
+	fmt.Println("Enter bucket region:")
+	readerRegion := bufio.NewReader(os.Stdin)
+	regionName, err := readerRegion.ReadString('\n')
+
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return
+	}
+
+
 	fmt.Println("Loading bucket s3")
+
 	sess, err := session.NewSession(&aws.Config{
-		Region: aws.String("ap-southeast-1"),
+		Region: aws.String(strings.TrimRight(regionName, "\r\n")),
 	})
 
 	if err != nil {
