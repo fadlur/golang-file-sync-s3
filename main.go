@@ -3,18 +3,44 @@ package main
 import (
 	"bufio"
 	"fmt"
+	"io"
+	"log"
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/s3"
+	"github.com/fsnotify/fsnotify"
 )
 
-func main()  {
-	var listConfig [4]string
+var (
+	s3session *s3.S3
+	listConfig [4]string
+)
 
+func init()  {
+	fmt.Println("Enter bucket region:")
+	readerRegion := bufio.NewReader(os.Stdin)
+	regionName, err := readerRegion.ReadString('\n')
+
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return
+	}
+
+	s3session = s3.New(session.Must(session.NewSession(&aws.Config{
+		Region: aws.String(strings.TrimRight(regionName, "\r\n")),
+	})))
+
+	// if err != nil {
+	// 	exitErrorf("Unable to find config, %v", err)
+	// }
+}
+
+func main()  {
 	welcomeText := `
 	Sync file to AWS S3
 	############## SETUP ##############
@@ -26,29 +52,19 @@ func main()  {
 	6. Copy paste error directory (file which is failed to upload to s3)
 	`
 	fmt.Println(welcomeText)
-	fmt.Println("Enter bucket region:")
-	readerRegion := bufio.NewReader(os.Stdin)
-	regionName, err := readerRegion.ReadString('\n')
+	
 
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		return
-	}
+	// sess, err := session.NewSession(&aws.Config{
+	// 	Region: aws.String(strings.TrimRight(regionName, "\r\n")),
+	// })
 
-
-	fmt.Println("Loading bucket s3")
-
-	sess, err := session.NewSession(&aws.Config{
-		Region: aws.String(strings.TrimRight(regionName, "\r\n")),
-	})
-
-	if err != nil {
-		exitErrorf("Unable to find config, %v", err)
-	}
+	// if err != nil {
+	// 	exitErrorf("Unable to find config, %v", err)
+	// }
 	// Create S3 Service client
-	svc := s3.New(sess)
+	// svc := s3.New(s3session)
 
-	result, err := svc.ListBuckets(nil)
+	result, err := s3session.ListBuckets(nil)
 	if err != nil {
 		exitErrorf("Unable to list buckets, %v", err)
 	}
@@ -106,6 +122,99 @@ func main()  {
 	for _, a := range listConfig {
 		fmt.Println(a)
 	}
+
+	if listConfig[0] != "" {
+		watcherFile(listConfig[0], listConfig[1], listConfig[2], listConfig[3])
+	}
+}
+
+func watcherFile(mainDirectory, successDirectory, errorDirectory, bucketName string)  {
+	watcher, err := fsnotify.NewWatcher()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	defer watcher.Close()
+
+	done := make(chan bool)
+
+	go handleFileWatcher(*watcher, successDirectory, errorDirectory, bucketName)
+
+	err = watcher.Add(mainDirectory)
+	if err != nil {
+		log.Fatal(err)
+	}
+	<-done
+}
+
+func handleFileWatcher(watcher fsnotify.Watcher, successDirectory, errorDirectory, bucketName string) {
+	for {
+		select {
+			case event, ok := <-watcher.Events:
+				if !ok {
+					return
+				}
+				log.Println("event: ", event)
+				if (event.Op.String() == "CREATE") {
+					time.Sleep(3 * time.Second)
+					// upload file
+					log.Println(uploadObject(event.Name, bucketName))
+				}
+			case err, ok := <- watcher.Errors:
+				if !ok {
+					return
+				}
+				log.Println("error: ", err)
+		}
+	
+	}
+}
+//(resp *s3.PutObjectOutput)
+func uploadObject(filename, bucketName string) (resp *s3.PutObjectOutput) {
+	f, err := os.Open(filename)
+	if err != nil {
+		log.Println("File not found : ", err)
+	}
+	log.Println("Uploading : ", filename)
+	filenameSplit := strings.Split(filename, "/")
+	resp, err = s3session.PutObject(&s3.PutObjectInput{
+		Body:                      f,
+		Bucket:                    aws.String(bucketName),
+		Key: aws.String(filenameSplit[len(filenameSplit)-1]),
+	})
+
+	if err != nil {
+		log.Println("Upload error: ", err)
+		moveFile(filename, listConfig[2]+"/"+filenameSplit[len(filenameSplit)-1])
+	} else {
+		moveFile(filename, listConfig[1]+"/"+filenameSplit[len(filenameSplit)-1])
+	}
+	return resp
+}
+
+func moveFile(sourcePath, destPath string) error  {
+	inputFile, err := os.Open(sourcePath)
+	if err != nil {
+		return fmt.Errorf("Could't open file : %s", err)
+	}
+
+	outputFile, err := os.Create(destPath)
+	if err != nil {
+		inputFile.Close()
+		return fmt.Errorf("could't open destination file: %s", err)
+	}
+	defer outputFile.Close()
+	_, err = io.Copy(outputFile, inputFile)
+	inputFile.Close()
+	if err != nil {
+		return fmt.Errorf("Writing to outpu file failed: %s", err)
+	}
+
+	err = os.Remove(sourcePath)
+	if err != nil {
+		return fmt.Errorf("Failed removing original file: %s", err)
+	}
+	return nil
 }
 
 func exitErrorf(msg string, args ...interface{})  {
