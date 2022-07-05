@@ -6,6 +6,7 @@ import (
 	"io"
 	"log"
 	"os"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -19,6 +20,7 @@ import (
 var (
 	s3session *s3.S3
 	listConfig [4]string
+	pathSeparator string
 )
 
 func init()  {
@@ -35,9 +37,11 @@ func init()  {
 		Region: aws.String(strings.TrimRight(regionName, "\r\n")),
 	})))
 
-	// if err != nil {
-	// 	exitErrorf("Unable to find config, %v", err)
-	// }
+	if runtime.GOOS == "windows" {
+		pathSeparator = "\\"
+	} else {
+		pathSeparator = "/"
+	}
 }
 
 func main()  {
@@ -176,7 +180,7 @@ func uploadObject(filename, bucketName string) (resp *s3.PutObjectOutput) {
 		log.Println("File not found : ", err)
 	}
 	log.Println("Uploading : ", filename)
-	filenameSplit := strings.Split(filename, "/")
+	filenameSplit := strings.Split(filename, pathSeparator)
 	resp, err = s3session.PutObject(&s3.PutObjectInput{
 		Body:                      f,
 		Bucket:                    aws.String(bucketName),
@@ -185,9 +189,9 @@ func uploadObject(filename, bucketName string) (resp *s3.PutObjectOutput) {
 
 	if err != nil {
 		log.Println("Upload error: ", err)
-		moveFile(filename, listConfig[2]+"/"+filenameSplit[len(filenameSplit)-1])
+		moveFile(filename, listConfig[2]+pathSeparator+filenameSplit[len(filenameSplit)-1])
 	} else {
-		moveFile(filename, listConfig[1]+"/"+filenameSplit[len(filenameSplit)-1])
+		moveFile(filename, listConfig[1]+pathSeparator+filenameSplit[len(filenameSplit)-1])
 	}
 	return resp
 }
