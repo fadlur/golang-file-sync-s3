@@ -184,14 +184,20 @@ func uploadObject(filename, bucketName string) (resp *s3.PutObjectOutput) {
 	resp, err = s3session.PutObject(&s3.PutObjectInput{
 		Body:                      f,
 		Bucket:                    aws.String(bucketName),
-		Key: aws.String(filenameSplit[len(filenameSplit)-1]),
+		Key: aws.String("crm_adhoc_email/crm_email_dashboard/new/"+filenameSplit[len(filenameSplit)-1]),
 	})
 
 	if err != nil {
 		log.Println("Upload error: ", err)
-		moveFile(filename, listConfig[2]+pathSeparator+filenameSplit[len(filenameSplit)-1])
+		err = moveFile(filename, listConfig[2]+pathSeparator+filenameSplit[len(filenameSplit)-1])
+		if err != nil {
+			fmt.Printf("%v\n", err)
+		}
 	} else {
-		moveFile(filename, listConfig[1]+pathSeparator+filenameSplit[len(filenameSplit)-1])
+		err = moveFile(filename, listConfig[1]+pathSeparator+filenameSplit[len(filenameSplit)-1])
+		if err != nil {
+			fmt.Printf("%v\n", err)
+		}
 	}
 	return resp
 }
@@ -199,7 +205,7 @@ func uploadObject(filename, bucketName string) (resp *s3.PutObjectOutput) {
 func moveFile(sourcePath, destPath string) error  {
 	inputFile, err := os.Open(sourcePath)
 	if err != nil {
-		return fmt.Errorf("Could't open file : %s", err)
+		return fmt.Errorf("could't open file : %s", err)
 	}
 
 	outputFile, err := os.Create(destPath)
@@ -211,12 +217,12 @@ func moveFile(sourcePath, destPath string) error  {
 	_, err = io.Copy(outputFile, inputFile)
 	inputFile.Close()
 	if err != nil {
-		return fmt.Errorf("Writing to outpu file failed: %s", err)
+		return fmt.Errorf("writing to output file failed: %s", err)
 	}
 
 	err = os.Remove(sourcePath)
 	if err != nil {
-		return fmt.Errorf("Failed removing original file: %s", err)
+		return fmt.Errorf("failed removing original file: %s", err)
 	}
 	return nil
 }
